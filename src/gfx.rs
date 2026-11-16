@@ -161,7 +161,7 @@ struct PointUniform {
 #[derive(Clone, Copy, Pod, Zeroable)]
 pub struct LineVertex {
     pub pos: [f32; 3],
-    /// 1 = drawn at the line width of the view, 0 = always one pixel (the grid).
+    /// Width in pixels; negative = the line width of the view (the default of a topic).
     pub width: f32,
     pub color: [f32; 4],
 }
@@ -249,7 +249,7 @@ struct VOut { @builtin(position) pos: vec4<f32>, @location(0) col: vec4<f32> };
   var d = (cb.xy / cb.w - ca.xy / ca.w) * u.viewport;
   let l = length(d);
   if (l < 1e-6) { d = vec2<f32>(1.0, 0.0); } else { d = d / l; }
-  let px = max(1.0, mix(1.0, u.line_px, v.aw));
+  let px = max(1.0, select(v.aw, u.line_px, v.aw < 0.0));
   let n = vec2<f32>(-d.y, d.x) * px / u.viewport;
   let c = mix(ca, cb, ends[i]);
   o.pos = vec4<f32>(c.xy + n * sides[i] * c.w, c.z, c.w);
@@ -596,7 +596,7 @@ impl View3D {
     }
 
     /// Uploads new point data (one copy of the message bytes into the GPU buffer) and refreshes every cloud uniform.
-    pub fn sync_clouds(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, snaps: &HashMap<String, CloudSnapshot>, vp: Mat4, eye: Vec3, point_px: f32) {
+    pub fn sync_clouds(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, snaps: &HashMap<String, CloudSnapshot>, vp: Mat4, eye: Vec3, point_px: f32, topic_px: &HashMap<String, f32>) {
         self.clouds.retain(|k, _| snaps.contains_key(k));
         self.cloud_points = (0, 0);
         // RSVIZ_NO_LOD=1 draws every point of every cloud (to compare).
@@ -605,6 +605,7 @@ impl View3D {
         let limits = device.limits();
         let max = (limits.max_storage_buffer_binding_size as u64).min(limits.max_buffer_size) & !3;
         for (topic, s) in snaps {
+            let point_px = topic_px.get(topic).copied().unwrap_or(point_px);     // (the size set for this topic, if any)
             let step = s.point_step.max(1) as u64;
             let len = (s.len as u64).min(max / step * step) as usize;
             let n = s.n.min((len as u64 / step) as u32);

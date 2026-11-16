@@ -80,6 +80,33 @@ pub struct TopicRow {
     pub error: Option<String>,
 }
 
+/// What the user set for one topic in the topics panel; None = the default of the view.
+#[derive(Clone, Copy, Default, PartialEq)]
+pub struct TopicStyle {
+    /// Lines (paths, trails, marker lines): width in pixels.
+    pub width: Option<f32>,
+    /// Paths and trails: colour.
+    pub color: Option<[f32; 3]>,
+    /// Point clouds: point size in pixels.
+    pub point_px: Option<f32>,
+}
+
+/// The TF frames: which ones are not drawn, and the length of their axes (m).
+pub struct TfStyle {
+    pub hidden: std::collections::HashSet<String>,
+    pub len: f32,
+}
+
+/// Which settings a topic of this kind has: (line width, colour, point size).
+fn style_of(kind: &str) -> (bool, bool, bool) {
+    match kind {
+        "Path" | "Odometry" | "PoseStamped" => (true, true, false),
+        "Marker" | "MarkerArray" => (true, false, false),
+        "PointCloud2" => (false, false, true),
+        _ => (false, false, false),
+    }
+}
+
 fn kind_color(kind: &str) -> Color32 {
     match kind {
         "PointCloud2" => Color32::from_rgb(0xee, 0xa1, 0x2c),
@@ -116,7 +143,10 @@ fn section(ui: &mut egui::Ui, title: &str) {
     ui.add_space(2.0);
 }
 
-pub fn topics_panel(ctx: &egui::Context, rows: &[TopicRow], visible: &mut HashMap<String, bool>) {
+/// The topics, with their settings (click on a name). defaults: (line width, point size) of the view. Returns true when
+/// a setting changed.
+pub fn topics_panel(ctx: &egui::Context, rows: &[TopicRow], visible: &mut HashMap<String, bool>, styles: &mut HashMap<String, TopicStyle>, defaults: (f32, f32), frames: &[String], tf: &mut TfStyle) -> bool {
+    let mut changed = false;
     egui::SidePanel::left("topics")
         .default_width(270.0)
         .frame(egui::Frame::none().fill(pal::PANEL).inner_margin(egui::Margin::symmetric(10.0, 8.0)))
@@ -134,6 +164,11 @@ pub fn topics_panel(ctx: &egui::Context, rows: &[TopicRow], visible: &mut HashMa
                     }
                     section(ui, title);
                     for row in group {
+                        let (has_w, has_c, has_p) = style_of(row.kind);
+                        let is_tf = row.kind == "TF";
+                        let has_style = has_w || has_c || has_p || is_tf;
+                        let open_id = egui::Id::new(("topic settings", &row.name));
+                        let mut open = ui.data(|d| d.get_temp::<bool>(open_id)).unwrap_or(false);
                         let mut on = visible.get(&row.name).copied().unwrap_or(true);
                         let resp = ui
                             .horizontal(|ui| {
@@ -148,19 +183,90 @@ pub fn topics_panel(ctx: &egui::Context, rows: &[TopicRow], visible: &mut HashMa
                                 let name_w = (ui.available_width() - 46.0).max(20.0);
                                 ui.allocate_ui_with_layout(egui::vec2(name_w, 18.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
                                     ui.set_min_width(name_w);
-                                    ui.add(egui::Label::new(RichText::new(&row.name).color(name_col)).truncate());
+                                    let shown = if has_style { format!("{} {}", row.name, if open { "⏷" } else { "⏵" }) } else { row.name.clone() };
+                                    let name = ui.add(egui::Label::new(RichText::new(shown).color(name_col)).truncate().sense(egui::Sense::click()));
+                                    if has_style && name.clicked() {
+                                        open = !open;
+                                        ui.data_mut(|d| d.insert_temp(open_id, open));
+                                    }
                                 });
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                     ui.label(RichText::new(hz).monospace().size(11.0).color(pal::WEAK));
                                 });
                             })
                             .response;
-                        let tip = format!("{}\n{} · {}{}", row.name, row.kind, row.qos, row.error.as_ref().map(|e| format!("\n{e}")).unwrap_or_default());
+                        let more = if has_style { "\nclick on the name: settings" } else { "" };
+                        let tip = format!("{}\n{} · {}{}{more}", row.name, row.kind, row.qos, row.error.as_ref().map(|e| format!("\n{e}")).unwrap_or_default());
                         resp.on_hover_text(tip);
+                        if is_tf && open {
+                            // the frames, one by one: which are drawn, and how long their axes are
+                            ui.horizontal(|ui| {
+                                ui.add_space(30.0);
+                                if ui.add(egui::DragValue::new(&mut tf.len).range(0.05..=1000.0).speed(0.05).suffix(" m")).on_hover_text("length of the axes").changed() {
+                                    changed = true;
+                                }
+                                if ui.small_button("all").clicked() {
+                                    tf.hidden.clear();
+                                    changed = true;
+                                }
+                                if ui.small_button("none").clicked() {
+                                    tf.hidden = frames.iter().cloned().collect();
+                                    changed = true;
+                                }
+                            });
+                            for f in frames {
+                                ui.horizontal(|ui| {
+                                    ui.add_space(30.0);
+                                    let mut on = !tf.hidden.contains(f);
+                                    if eye(ui, &mut on).clicked() {
+                                        if on {
+                                            tf.hidden.remove(f);
+                                        } else {
+                                            tf.hidden.insert(f.clone());
+                                        }
+                                        changed = true;
+                                    }
+                                    ui.add(egui::Label::new(RichText::new(f).size(12.0).color(if on { pal::TEXT } else { pal::WEAK })).truncate());
+                                });
+                            }
+                        } else if has_style && open {
+                            let old = styles.get(&row.name).copied().unwrap_or_default();
+                            let mut st = old;
+                            ui.horizontal(|ui| {
+                                ui.add_space(30.0);
+                                ui.spacing_mut().slider_width = 86.0;
+                                if has_w {
+                                    let mut w = st.width.unwrap_or(defaults.0);
+                                    if ui.add(egui::Slider::new(&mut w, 1.0..=10.0).fixed_decimals(1)).on_hover_text("line width (px)").changed() {
+                                        st.width = Some(w);
+                                    }
+                                }
+                                if has_p {
+                                    let mut p = st.point_px.unwrap_or(defaults.1);
+                                    if ui.add(egui::Slider::new(&mut p, 1.0..=10.0).fixed_decimals(1)).on_hover_text("point size (px)").changed() {
+                                        st.point_px = Some(p);
+                                    }
+                                }
+                                if has_c {
+                                    let mut c = st.color.unwrap_or([0.24, 0.55, 1.0]);
+                                    if ui.color_edit_button_rgb(&mut c).on_hover_text("colour").changed() {
+                                        st.color = Some(c);
+                                    }
+                                }
+                                if st != TopicStyle::default() && ui.small_button("reset").on_hover_text("back to the defaults of the view").clicked() {
+                                    st = TopicStyle::default();
+                                }
+                            });
+                            if st != old {
+                                styles.insert(row.name.clone(), st);
+                                changed = true;
+                            }
+                        }
                     }
                 }
             });
         });
+    changed
 }
 
 pub struct TopBar<'a> {

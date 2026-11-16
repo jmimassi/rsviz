@@ -162,7 +162,11 @@ struct Running {
     images: HashMap<String, Option<ImageTex>>,
     camera: Camera,
     visible: HashMap<String, bool>,
-    lines_key: (u64, String, bool, bool, [i64; 3], i32),
+    /// Per-topic settings of the topics panel, and a counter of their changes (the lines are rebuilt on a change).
+    styles: HashMap<String, ui::TopicStyle>,
+    tf_style: ui::TfStyle,
+    style_rev: u64,
+    lines_key: (u64, String, bool, bool, [i64; 3], i32, u64),
     settings: ui::ViewSettings,
     tree: egui_tiles::Tree<ui::Pane>,
     tree_key: Vec<String>,
@@ -303,13 +307,16 @@ impl App {
         let mut close_bag = false;
         let out = {
             let (visible, camera, settings, tree, images, timeline) = (&mut r.visible, &mut r.camera, &mut r.settings, &mut r.tree, &r.images, &mut r.timeline);
+            let (styles, style_rev, tf_style) = (&mut r.styles, &mut r.style_rev, &mut r.tf_style);
             let view_id = r.view.egui_id;
             r.egui_ctx.run(raw, |ctx| {
                 top = ui::top_bar(ctx, ui::TopBar { fixed_frame: &mut args.fixed_frame, follow: &mut args.follow, frames: &frames, fps, frame_ms, wait_ms, refresh, on_demand: args.on_demand, n_topics: rows.len(), source: source.clone(), domain: playback.is_none().then(|| self.shared.domain.load(std::sync::atomic::Ordering::Acquire)), loading: loading.clone(), notice: notice.clone() });
                 if let Some(pb) = &playback {
                     close_bag = ui::timeline(ctx, pb, timeline);
                 }
-                ui::topics_panel(ctx, &rows, visible);
+                if ui::topics_panel(ctx, &rows, visible, styles, (settings.line_px, settings.point_px), &frames, tf_style) {
+                    *style_rev += 1;
+                }
                 egui::CentralPanel::default().frame(egui::Frame::none().fill(ui::pal::BG)).show(ctx, |ui| {
                     let mut b = ui::Behavior { view_tex: view_id, view_px: &mut view_px, camera, vp: vp_ui, texts: &texts, images, image_meta: &image_meta, hz: &hz, settings };
                     tree.ui(&mut b, ui);
@@ -393,10 +400,10 @@ impl App {
             let step = 10f32.powi((r.camera.dist / 4.0).max(0.1).log10().floor() as i32);
             let target = r.camera.anchor + r.camera.offset;
             let cell = [(target.x / step).round() as i64, (target.y / step).round() as i64, 0];
-            let key = (s.version, self.args.fixed_frame.clone(), r.settings.grid, r.settings.axes, cell, step.log10().round() as i32);
+            let key = (s.version, self.args.fixed_frame.clone(), r.settings.grid, r.settings.axes, cell, step.log10().round() as i32, r.style_rev);
             if key != r.lines_key {
                 let grid = r.settings.grid.then(|| (Vec3::new(cell[0] as f32 * step, cell[1] as f32 * step, 0.0), step));
-                let verts = build_lines(&s, &self.args.fixed_frame, &r.visible, grid, r.settings.axes);
+                let verts = build_lines(&s, &self.args.fixed_frame, &r.visible, &r.styles, &r.tf_style, grid, r.settings.axes);
                 r.view.set_lines(&r.gpu.device, &r.gpu.queue, &verts);
                 r.lines_key = key;
             }
@@ -449,7 +456,8 @@ impl App {
             }
             (clouds, meshes)
         };
-        r.view.sync_clouds(&r.gpu.device, &r.gpu.queue, &snaps, vp, r.camera.eye(), r.settings.point_px);
+        let topic_px: HashMap<String, f32> = r.styles.iter().filter_map(|(k, v)| v.point_px.map(|p| (k.clone(), p))).collect();
+        r.view.sync_clouds(&r.gpu.device, &r.gpu.queue, &snaps, vp, r.camera.eye(), r.settings.point_px, &topic_px);
         r.view.sync_meshes(&r.gpu.device, &r.gpu.queue, &mesh_snaps, vp);
 
         let acquire_start = Instant::now();
@@ -575,12 +583,13 @@ fn to_mat4(a: &DAffine3) -> Mat4 {
     Mat4::from_cols_array(&glam::DMat4::from(*a).to_cols_array().map(|v| v as f32))
 }
 
-fn build_lines(s: &SceneData, fixed: &str, visible: &HashMap<String, bool>, grid: Option<(Vec3, f32)>, axes: bool) -> Vec<LineVertex> {
+fn build_lines(s: &SceneData, fixed: &str, visible: &HashMap<String, bool>, styles: &HashMap<String, ui::TopicStyle>, tf: &ui::TfStyle, grid: Option<(Vec3, f32)>, axes: bool) -> Vec<LineVertex> {
     let mut v = Vec::new();
     let mut gv: Vec<LineVertex> = Vec::new();
-    let mut seg = |a: Vec3, b: Vec3, c: [f32; 4]| {
-        v.push(LineVertex { pos: a.to_array(), width: 1.0, color: c });
-        v.push(LineVertex { pos: b.to_array(), width: 1.0, color: c });
+    // w: width in pixels, negative = the line width of the view
+    let mut seg = |a: Vec3, b: Vec3, c: [f32; 4], w: f32| {
+        v.push(LineVertex { pos: a.to_array(), width: w, color: c });
+        v.push(LineVertex { pos: b.to_array(), width: w, color: c });
     };
     if let Some((c, step)) = grid {
         // 40 x 40 cells, fading out with the distance from the centre (each line split so the fade shows).
@@ -603,20 +612,23 @@ fn build_lines(s: &SceneData, fixed: &str, visible: &HashMap<String, bool>, grid
                         cp[3] *= 0.5;
                         cq[3] *= 0.5;
                     }
-                    gv.push(LineVertex { pos: p.to_array(), width: 0.0, color: cp });
-                    gv.push(LineVertex { pos: q.to_array(), width: 0.0, color: cq });
+                    gv.push(LineVertex { pos: p.to_array(), width: 1.0, color: cp });
+                    gv.push(LineVertex { pos: q.to_array(), width: 1.0, color: cq });
                 }
             }
         }
     }
     if axes {
         for f in s.tf.frames() {
+            if tf.hidden.contains(&f) {
+                continue;
+            }
             if let Some(a) = s.tf.lookup(fixed, &f) {
                 let o = a.translation.as_vec3();
                 let m = a.matrix3.as_mat3();
-                seg(o, o + m * Vec3::X * 0.5, [0.9, 0.2, 0.2, 1.0]);
-                seg(o, o + m * Vec3::Y * 0.5, [0.2, 0.85, 0.3, 1.0]);
-                seg(o, o + m * Vec3::Z * 0.5, [0.25, 0.45, 0.95, 1.0]);
+                seg(o, o + m * Vec3::X * tf.len, [0.9, 0.2, 0.2, 1.0], -1.0);
+                seg(o, o + m * Vec3::Y * tf.len, [0.2, 0.85, 0.3, 1.0], -1.0);
+                seg(o, o + m * Vec3::Z * tf.len, [0.25, 0.45, 0.95, 1.0], -1.0);
             }
         }
     }
@@ -624,6 +636,7 @@ fn build_lines(s: &SceneData, fixed: &str, visible: &HashMap<String, bool>, grid
         if !visible.get(topic).copied().unwrap_or(true) {
             continue;
         }
+        let mw = styles.get(topic).and_then(|t| t.width).unwrap_or(-1.0);
         for d in ms.values() {
             let Prim::Lines(p, c) = &d.prim else { continue };
             let Some(a) = s.tf.lookup(fixed, &d.frame_id) else { continue };
@@ -631,7 +644,7 @@ fn build_lines(s: &SceneData, fixed: &str, visible: &HashMap<String, bool>, grid
             for (k, w) in p.chunks_exact(2).enumerate() {
                 let q0 = a.transform_point3(glam::DVec3::new(w[0][0] as f64, w[0][1] as f64, w[0][2] as f64)).as_vec3();
                 let q1 = a.transform_point3(glam::DVec3::new(w[1][0] as f64, w[1][1] as f64, w[1][2] as f64)).as_vec3();
-                seg(q0, q1, c[2 * k]);
+                seg(q0, q1, c[2 * k], mw);
             }
         }
     }
@@ -643,10 +656,12 @@ fn build_lines(s: &SceneData, fixed: &str, visible: &HashMap<String, bool>, grid
         }
         let l = &s.lines[name];
         let Some(a) = s.tf.lookup(fixed, &l.frame_id) else { continue };
-        let c = PALETTE[i % PALETTE.len()];
+        let st = styles.get(name).copied().unwrap_or_default();
+        let c = st.color.map(|c| [c[0], c[1], c[2], 1.0]).unwrap_or(PALETTE[i % PALETTE.len()]);
+        let lw = st.width.unwrap_or(-1.0);
         let pts: Vec<Vec3> = l.points.iter().map(|p| a.transform_point3(glam::DVec3::from(*p)).as_vec3()).collect();
         for w in pts.windows(2) {
-            seg(w[0], w[1], c);
+            seg(w[0], w[1], c, lw);
         }
     }
     v.extend(gv);
@@ -691,7 +706,10 @@ impl ApplicationHandler<()> for App {
             images: HashMap::new(),
             camera: Camera { dist: self.args.distance, pitch: self.args.pitch, ..Camera::default() },
             visible: HashMap::new(),
-            lines_key: (u64::MAX, String::new(), false, false, [0; 3], 0),
+            styles: HashMap::new(),
+            tf_style: ui::TfStyle { hidden: Default::default(), len: 0.5 },
+            style_rev: 0,
+            lines_key: (u64::MAX, String::new(), false, false, [0; 3], 0, 0),
             settings: ui::ViewSettings { point_px: self.args.point_px, line_px: self.args.line_px, grid: true, axes: true },
             tree: ui::build_tree(&[]),
             tree_key: Vec::new(),

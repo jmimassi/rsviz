@@ -22,6 +22,9 @@ ROS 2 bags by itself, with a timeline.
   play / pause, speed, loop and seek. A seek rebuilds the scene as it was at that time.
 - **Light when idle.** With `--on-demand` it draws only when a message arrives or when you interact.
 - **Any ROS domain.** `--domain N`, or the field in the top bar while it runs.
+- **Settings per topic.** Click the name of a topic in the list: line width and colour of a path or a trail, line width
+  of markers, point size of a cloud. Under `/tf`: the frames one by one (shown or hidden) and the length of their axes.
+  The View menu holds the defaults (point size, line width, grid, TF axes).
 
 Messages drawn:
 
@@ -91,7 +94,7 @@ While a bag is open the live topics are muted; closing it brings them back.
 | `--follow base_link\|none` | the TF frame the camera orbits (default: `base_link` as soon as it exists) |
 | `--distance 30`, `--pitch 0.6` | start distance and pitch of the camera |
 | `--topics /a,/b` | show only these topics |
-| `--point-size 2`, `--line-width 2` | size of the points and width of the lines, in pixels (also in the View menu) |
+| `--point-size 2`, `--line-width 2` | default size of the points and width of the lines, in pixels (also in the View menu; per topic in the list) |
 | `--trail 20000` | length of the pose trails |
 | `--domain N` | ROS domain to listen on (default: `ROS_DOMAIN_ID`) |
 | `--rate 1.0`, `--start 0`, `--loop`, `--paused` | bag playback: speed, start time (s), loop, start paused |
