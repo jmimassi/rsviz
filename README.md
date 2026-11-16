@@ -2,6 +2,10 @@
 
 A small, efficient ROS 2 viewer written in Rust.
 
+![rsviz: a point cloud, a path, markers and two camera streams](assets/screenshot.png)
+
+*rsviz on a synthetic scene: a point cloud, a path, markers, TF frames and two camera streams.*
+
 rsviz shows a 3D view (point clouds, paths, odometry and pose trails, markers, robot model, TF frames, grid) and
 camera panels, next to each other as draggable tiles. It is a native ROS 2 node (rcl, through
 [r2r](https://github.com/sequenceplanner/r2r)): no bridge, no web server, one 26 MB binary. It runs natively on ROS 2 Jazzy, or from a docker image on any Linux. It also opens ROS 1 and
