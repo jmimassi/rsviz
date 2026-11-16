@@ -4,7 +4,7 @@ A small, efficient ROS 2 viewer written in Rust.
 
 rsviz shows a 3D view (point clouds, paths, odometry and pose trails, markers, robot model, TF frames, grid) and
 camera panels, next to each other as draggable tiles. It is a native ROS 2 node (rcl, through
-[r2r](https://github.com/sequenceplanner/r2r)): no bridge, no web server, one 26 MB binary. It also opens ROS 1 and
+[r2r](https://github.com/sequenceplanner/r2r)): no bridge, no web server, one 26 MB binary. It runs natively on ROS 2 Jazzy, or from a docker image on any Linux. It also opens ROS 1 and
 ROS 2 bags by itself, with a timeline.
 
 ## Features
@@ -32,7 +32,23 @@ Messages drawn:
 | `std_msgs/String` on a `robot_description` topic | URDF robot model |
 | `/tf`, `/tf_static` | frames, and the transform of everything else into the fixed frame |
 
-## Build
+## Run it with docker (any Linux)
+
+Nothing to install but docker: no ROS and no Rust on the machine, whatever its distribution.
+
+```bash
+git clone https://github.com/jmimassi/rsviz.git && cd rsviz
+./rsviz-docker.sh                                     # builds the image the first time (a few minutes), then opens rsviz
+./rsviz-docker.sh --domain 37 --fixed-frame map       # the arguments of rsviz
+./rsviz-docker.sh ~/bags/flight.mcap                  # a bag of the home folder (mounted read only)
+```
+
+The container shares the network and the IPC of the host: it sees the ROS 2 topics of the machine, and those of
+containers started with `--network host --ipc host`. It draws with the NVIDIA GPU when docker has the NVIDIA runtime,
+else with Mesa: the GPU of `/dev/dri` (Intel, AMD), or the CPU when there is none. The window goes to the X11 display
+(`DISPLAY`).
+
+## Build it natively
 
 You need Linux with ROS 2 Jazzy (Ubuntu 24.04), a Rust toolchain and clang (r2r generates its message bindings with
 bindgen). The ROS installation must provide the message packages listed in [`.cargo/config.toml`](.cargo/config.toml)
@@ -50,6 +66,8 @@ cargo build --release                                               # target/rel
 The binary needs the ROS 2 environment at run time as well (`source /opt/ros/jazzy/setup.bash`).
 
 ## Use
+
+The same arguments with `./rsviz-docker.sh` in place of `target/release/rsviz`.
 
 ```bash
 source /opt/ros/jazzy/setup.bash
