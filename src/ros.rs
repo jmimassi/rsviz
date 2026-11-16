@@ -330,6 +330,9 @@ impl Handler {
                 let mut s = self.shared.scene.lock().unwrap();
                 for t in &tfs {
                     s.tf.set(&t.parent, &t.child, t.t, t.q);
+                    if self.topic.ends_with("tf_static") {
+                        s.tf.mark_static(&t.child);
+                    }
                 }
                 s.version += 1;
             }

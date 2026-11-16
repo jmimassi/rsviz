@@ -23,7 +23,7 @@ ROS 2 bags by itself, with a timeline.
 - **Light when idle.** With `--on-demand` it draws only when a message arrives or when you interact.
 - **Any ROS domain.** `--domain N`, or the field in the top bar while it runs.
 - **Settings per topic.** Click the name of a topic in the list: line width and colour of a path or a trail, line width
-  of markers, point size of a cloud. Under `/tf`: the frames one by one (shown or hidden) and the length of their axes.
+  of markers, point size of a cloud. Under `/tf` and `/tf_static`: their frames one by one (shown or hidden) and the length of the axes.
   The View menu holds the defaults (point size, line width, grid, TF axes).
 
 Messages drawn:

@@ -145,7 +145,7 @@ fn section(ui: &mut egui::Ui, title: &str) {
 
 /// The topics, with their settings (click on a name). defaults: (line width, point size) of the view. Returns true when
 /// a setting changed.
-pub fn topics_panel(ctx: &egui::Context, rows: &[TopicRow], visible: &mut HashMap<String, bool>, styles: &mut HashMap<String, TopicStyle>, defaults: (f32, f32), frames: &[String], tf: &mut TfStyle) -> bool {
+pub fn topics_panel(ctx: &egui::Context, rows: &[TopicRow], visible: &mut HashMap<String, bool>, styles: &mut HashMap<String, TopicStyle>, defaults: (f32, f32), frames: (&[String], &[String]), tf: &mut TfStyle) -> bool {
     let mut changed = false;
     egui::SidePanel::left("topics")
         .default_width(270.0)
@@ -199,18 +199,22 @@ pub fn topics_panel(ctx: &egui::Context, rows: &[TopicRow], visible: &mut HashMa
                         let tip = format!("{}\n{} · {}{}{more}", row.name, row.kind, row.qos, row.error.as_ref().map(|e| format!("\n{e}")).unwrap_or_default());
                         resp.on_hover_text(tip);
                         if is_tf && open {
-                            // the frames, one by one: which are drawn, and how long their axes are
+                            // the frames of this topic, one by one (/tf_static: the static ones; /tf: the others): which are
+                            // drawn, and how long the axes are
+                            let frames = if row.name.ends_with("tf_static") { frames.1 } else { frames.0 };
                             ui.horizontal(|ui| {
                                 ui.add_space(30.0);
                                 if ui.add(egui::DragValue::new(&mut tf.len).range(0.05..=1000.0).speed(0.05).suffix(" m")).on_hover_text("length of the axes").changed() {
                                     changed = true;
                                 }
                                 if ui.small_button("all").clicked() {
-                                    tf.hidden.clear();
+                                    for f in frames {
+                                        tf.hidden.remove(f);
+                                    }
                                     changed = true;
                                 }
                                 if ui.small_button("none").clicked() {
-                                    tf.hidden = frames.iter().cloned().collect();
+                                    tf.hidden.extend(frames.iter().cloned());
                                     changed = true;
                                 }
                             });

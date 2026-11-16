@@ -72,6 +72,8 @@ impl TopicStat {
 pub struct TfTree {
     /// child -> (parent, transform parent <- child)
     edges: HashMap<String, (String, DAffine3)>,
+    /// Child frames whose transform came from /tf_static.
+    statics: std::collections::HashSet<String>,
     pub version: u64,
 }
 
@@ -118,8 +120,21 @@ impl TfTree {
         size.into_iter().max_by(|a, b| a.1.cmp(&b.1).then(b.0.cmp(&a.0))).map(|(f, _)| f)
     }
 
+    /// The transform of this child frame is a static one (/tf_static).
+    pub fn mark_static(&mut self, child: &str) {
+        self.statics.insert(child.trim_start_matches('/').to_owned());
+    }
+
+    /// The frames set by /tf_static, sorted.
+    pub fn static_frames(&self) -> Vec<String> {
+        let mut v: Vec<String> = self.statics.iter().filter(|f| self.edges.contains_key(*f)).cloned().collect();
+        v.sort();
+        v
+    }
+
     pub fn clear(&mut self) {
         self.edges.clear();
+        self.statics.clear();
         self.version += 1;
     }
 

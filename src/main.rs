@@ -209,7 +209,7 @@ impl App {
         let gap = frame_start.saturating_duration_since(r.last_frame);
 
         // Light copy of what the UI shows (no message data).
-        let (rows, image_meta, frames, texts, tf_root) = {
+        let (rows, image_meta, frames, texts, tf_root, static_frames) = {
             let mut s = self.shared.scene.lock().unwrap();
             // Markers past their lifetime.
             let now = Instant::now();
@@ -243,7 +243,7 @@ impl App {
                 .collect();
             rows.sort_by(|a, b| a.name.cmp(&b.name));
             let im: BTreeMap<String, (u32, u32, f32)> = s.images.iter().map(|(k, v)| (k.clone(), (v.width, v.height, v.decode_ms))).collect();
-            (rows, im, s.tf.frames(), texts, s.tf.root())
+            (rows, im, s.tf.frames(), texts, s.tf.root(), s.tf.static_frames())
         };
         // New topics are shown, except a bag's raw camera topic when its relayed twin exists (".../image_raw/..." vs ".../image/...").
         let names: std::collections::HashSet<&str> = rows.iter().map(|row| row.name.as_str()).collect();
@@ -303,6 +303,8 @@ impl App {
                 auto_focus = true;
             }
         }
+        // the frames listed under /tf (moving ones, and the roots) and under /tf_static
+        let moving_frames: Vec<String> = frames.iter().filter(|f| !static_frames.contains(*f)).cloned().collect();
         let mut top = ui::TopAction::default();
         let mut close_bag = false;
         let out = {
@@ -314,7 +316,7 @@ impl App {
                 if let Some(pb) = &playback {
                     close_bag = ui::timeline(ctx, pb, timeline);
                 }
-                if ui::topics_panel(ctx, &rows, visible, styles, (settings.line_px, settings.point_px), &frames, tf_style) {
+                if ui::topics_panel(ctx, &rows, visible, styles, (settings.line_px, settings.point_px), (&moving_frames, &static_frames), tf_style) {
                     *style_rev += 1;
                 }
                 egui::CentralPanel::default().frame(egui::Frame::none().fill(ui::pal::BG)).show(ctx, |ui| {

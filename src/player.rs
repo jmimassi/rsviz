@@ -420,6 +420,7 @@ impl Player {
             s.tf.clear();
             for tr in &self.statics {
                 s.tf.set(&tr.parent, &tr.child, tr.t, tr.q);
+                s.tf.mark_static(&tr.child);
             }
             for (ti, kind) in self.kinds.iter().enumerate() {
                 let name = &self.bag.topics[ti].name;
