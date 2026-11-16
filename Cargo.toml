@@ -1,0 +1,35 @@
+[package]
+name = "rsviz"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/jmimassi/rsviz"
+readme = "README.md"
+description = "Minimal, efficient ROS 2 viewer: point clouds, paths, poses, TF and camera images, native ROS 2 (rcl via r2r), no bridge; plays ROS 1 and ROS 2 bags with a timeline"
+
+[dependencies]
+r2r = "0.9.5"
+futures = "0.3"
+wgpu = "22.1"
+winit = "0.30.13"
+egui = "0.29.1"
+egui-wgpu = "0.29.1"
+egui-winit = { version = "0.29.1", default-features = false, features = ["links", "wayland", "x11"] }
+glam = "0.29"
+bytemuck = { version = "1", features = ["derive"] }
+pollster = "0.3"
+zune-jpeg = "0.4"
+zune-core = "0.4"
+roxmltree = "0.20"
+egui_tiles = "0.10"
+memmap2 = "0.9"
+lz4_flex = "0.11"
+zstd = "0.13"
+bzip2 = "0.4"
+rusqlite = { version = "0.32", features = ["bundled"] }
+log = "0.4"
+env_logger = "0.11"
+
+[profile.release]
+opt-level = 3
+debug = false

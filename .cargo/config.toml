@@ -1,0 +1,5 @@
+# r2r generates bindings only for these message packages (keeps the binary portable to images without e.g. pcl_msgs),
+# and bindgen needs the C builtin headers (stdbool.h) that libclang alone does not ship (gcc 13: Ubuntu 24.04).
+[env]
+IDL_PACKAGE_FILTER = "std_msgs;visualization_msgs;builtin_interfaces;geometry_msgs;sensor_msgs;nav_msgs;tf2_msgs;rcl_interfaces;action_msgs;unique_identifier_msgs;service_msgs;type_description_interfaces"
+BINDGEN_EXTRA_CLANG_ARGS = "-I/usr/lib/gcc/x86_64-linux-gnu/13/include"
