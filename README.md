@@ -91,7 +91,8 @@ While a bag is open the live topics are muted; closing it brings them back.
 | `--follow base_link\|none` | the TF frame the camera orbits (default: `base_link` as soon as it exists) |
 | `--distance 30`, `--pitch 0.6` | start distance and pitch of the camera |
 | `--topics /a,/b` | show only these topics |
-| `--point-size 2`, `--trail 20000` | size of the points, length of the pose trails |
+| `--point-size 2`, `--line-width 2` | size of the points and width of the lines, in pixels (also in the View menu) |
+| `--trail 20000` | length of the pose trails |
 | `--domain N` | ROS domain to listen on (default: `ROS_DOMAIN_ID`) |
 | `--rate 1.0`, `--start 0`, `--loop`, `--paused` | bag playback: speed, start time (s), loop, start paused |
 | `--on-demand` | draw only when something changes |

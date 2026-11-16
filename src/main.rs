@@ -7,7 +7,7 @@
 //! muted; closing it brings them back.
 //!
 //!   rsviz [bag ...] [--fixed-frame map] [--follow base_link|none] [--distance 30] [--pitch 0.6] [--topics /a,/b]
-//!         [--point-size 2] [--trail 20000] [--width 1600 --height 1000] [--present fifo|mailbox|immediate] [--max-fps N]
+//!         [--point-size 2] [--line-width 2] [--trail 20000] [--width 1600 --height 1000] [--present fifo|mailbox|immediate] [--max-fps N]
 //!         [--rate 1.0] [--start 0] [--loop] [--paused] [--bag-info] [--on-demand] [--gpu intel|nvidia] [--fullscreen] [--domain N]
 //!   bag ...: the bag to play (several files = the splits of one recording). Also: Open bag, or drop it on the window.
 //!   --rate, --start, --loop, --paused: playback speed, start time (seconds into the bag), loop at the end, start paused.
@@ -52,6 +52,7 @@ struct Args {
     pitch: f32,
     topics: Option<Vec<String>>,
     point_px: f32,
+    line_px: f32,
     trail: usize,
     width: u32,
     height: u32,
@@ -83,6 +84,7 @@ fn parse_args() -> Args {
         pitch: 0.6,
         topics: None,
         point_px: 2.0,
+        line_px: 2.0,
         trail: 20000,
         width: 1600,
         height: 1000,
@@ -108,6 +110,7 @@ fn parse_args() -> Args {
             "--pitch" => a.pitch = v().parse().expect("--pitch"),
             "--topics" => a.topics = Some(v().split(',').map(|s| s.trim().to_owned()).filter(|s| !s.is_empty()).collect()),
             "--point-size" => a.point_px = v().parse().expect("--point-size"),
+            "--line-width" => a.line_px = v().parse().expect("--line-width"),
             "--trail" => a.trail = v().parse().expect("--trail"),
             "--width" => a.width = v().parse().expect("--width"),
             "--height" => a.height = v().parse().expect("--height"),
@@ -478,7 +481,7 @@ impl App {
             r.egui_rend.update_texture(&r.gpu.device, &r.gpu.queue, *id, delta);
         }
         let mut enc = r.gpu.device.create_command_encoder(&Default::default());
-        r.view.render(&mut enc, &r.gpu.queue, vp, [0.0037, 0.0044, 0.0051]);
+        r.view.render(&mut enc, &r.gpu.queue, vp, [0.0037, 0.0044, 0.0051], r.settings.line_px);
         let extra = r.egui_rend.update_buffers(&r.gpu.device, &r.gpu.queue, &mut enc, &jobs, &sd);
         {
             let mut rp = enc
@@ -576,8 +579,8 @@ fn build_lines(s: &SceneData, fixed: &str, visible: &HashMap<String, bool>, grid
     let mut v = Vec::new();
     let mut gv: Vec<LineVertex> = Vec::new();
     let mut seg = |a: Vec3, b: Vec3, c: [f32; 4]| {
-        v.push(LineVertex { pos: a.to_array(), color: c });
-        v.push(LineVertex { pos: b.to_array(), color: c });
+        v.push(LineVertex { pos: a.to_array(), width: 1.0, color: c });
+        v.push(LineVertex { pos: b.to_array(), width: 1.0, color: c });
     };
     if let Some((c, step)) = grid {
         // 40 x 40 cells, fading out with the distance from the centre (each line split so the fade shows).
@@ -600,8 +603,8 @@ fn build_lines(s: &SceneData, fixed: &str, visible: &HashMap<String, bool>, grid
                         cp[3] *= 0.5;
                         cq[3] *= 0.5;
                     }
-                    gv.push(LineVertex { pos: p.to_array(), color: cp });
-                    gv.push(LineVertex { pos: q.to_array(), color: cq });
+                    gv.push(LineVertex { pos: p.to_array(), width: 0.0, color: cp });
+                    gv.push(LineVertex { pos: q.to_array(), width: 0.0, color: cq });
                 }
             }
         }
@@ -689,7 +692,7 @@ impl ApplicationHandler<()> for App {
             camera: Camera { dist: self.args.distance, pitch: self.args.pitch, ..Camera::default() },
             visible: HashMap::new(),
             lines_key: (u64::MAX, String::new(), false, false, [0; 3], 0),
-            settings: ui::ViewSettings { point_px: self.args.point_px, grid: true, axes: true },
+            settings: ui::ViewSettings { point_px: self.args.point_px, line_px: self.args.line_px, grid: true, axes: true },
             tree: ui::build_tree(&[]),
             tree_key: Vec::new(),
             timeline: ui::TimelineState::default(),

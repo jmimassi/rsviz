@@ -310,6 +310,7 @@ pub fn build_tree(images: &[String]) -> egui_tiles::Tree<Pane> {
 
 pub struct ViewSettings {
     pub point_px: f32,
+    pub line_px: f32,
     pub grid: bool,
     pub axes: bool,
 }
@@ -371,6 +372,7 @@ impl egui_tiles::Behavior<Pane> for Behavior<'_> {
                 ui.allocate_new_ui(egui::UiBuilder::new().max_rect(opt), |ui| {
                     ui.menu_button("View ⏷", |ui| {
                         ui.add(egui::Slider::new(&mut self.settings.point_px, 1.0..=10.0).text("point size"));
+                        ui.add(egui::Slider::new(&mut self.settings.line_px, 1.0..=10.0).text("line width"));
                         ui.checkbox(&mut self.settings.grid, "Grid");
                         ui.checkbox(&mut self.settings.axes, "TF axes");
                     });

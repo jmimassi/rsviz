@@ -161,7 +161,18 @@ struct PointUniform {
 #[derive(Clone, Copy, Pod, Zeroable)]
 pub struct LineVertex {
     pub pos: [f32; 3],
+    /// 1 = drawn at the line width of the view, 0 = always one pixel (the grid).
+    pub width: f32,
     pub color: [f32; 4],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct LineUniform {
+    vp: [[f32; 4]; 4],
+    viewport: [f32; 2],
+    line_px: f32,
+    _p0: f32,
 }
 
 const POINT_WGSL: &str = r#"
@@ -214,11 +225,37 @@ fn cmap(t: f32) -> vec3<f32> {
 @fragment fn fs(i: VOut) -> @location(0) vec4<f32> { return vec4<f32>(i.col, 1.0); }
 "#;
 
+// One instance per segment (its two LineVertex), drawn as a screen-aligned quad `line_px` pixels wide (6 vertices): the
+// GPU line primitive is one pixel wide whatever is asked. A segment that crosses the camera plane is cut there.
 const LINE_WGSL: &str = r#"
-@group(0) @binding(0) var<uniform> vp: mat4x4<f32>;
-struct VIn { @location(0) pos: vec3<f32>, @location(1) col: vec4<f32> };
+struct U { vp: mat4x4<f32>, viewport: vec2<f32>, line_px: f32, _p0: f32 };
+@group(0) @binding(0) var<uniform> u: U;
+struct VIn {
+  @location(0) a: vec3<f32>, @location(1) aw: f32, @location(2) ac: vec4<f32>,
+  @location(3) b: vec3<f32>, @location(4) bw: f32, @location(5) bc: vec4<f32>,
+};
 struct VOut { @builtin(position) pos: vec4<f32>, @location(0) col: vec4<f32> };
-@vertex fn vs(v: VIn) -> VOut { var o: VOut; o.pos = vp * vec4<f32>(v.pos, 1.0); o.col = v.col; return o; }
+@vertex fn vs(v: VIn, @builtin(vertex_index) i: u32) -> VOut {
+  var o: VOut;
+  var ends = array<f32, 6>(0.0, 1.0, 1.0, 0.0, 1.0, 0.0);
+  var sides = array<f32, 6>(-1.0, -1.0, 1.0, -1.0, 1.0, 1.0);
+  var ca = u.vp * vec4<f32>(v.a, 1.0);
+  var cb = u.vp * vec4<f32>(v.b, 1.0);
+  let near = 1e-4;
+  o.col = v.ac;
+  if (ca.w < near && cb.w < near) { o.pos = vec4<f32>(2.0, 2.0, 2.0, 1.0); return o; }
+  if (ca.w < near) { ca = mix(ca, cb, (near - ca.w) / (cb.w - ca.w)); }
+  if (cb.w < near) { cb = mix(cb, ca, (near - cb.w) / (ca.w - cb.w)); }
+  var d = (cb.xy / cb.w - ca.xy / ca.w) * u.viewport;
+  let l = length(d);
+  if (l < 1e-6) { d = vec2<f32>(1.0, 0.0); } else { d = d / l; }
+  let px = max(1.0, mix(1.0, u.line_px, v.aw));
+  let n = vec2<f32>(-d.y, d.x) * px / u.viewport;
+  let c = mix(ca, cb, ends[i]);
+  o.pos = vec4<f32>(c.xy + n * sides[i] * c.w, c.z, c.w);
+  o.col = mix(v.ac, v.bc, ends[i]);
+  return o;
+}
 @fragment fn fs(i: VOut) -> @location(0) vec4<f32> { return vec4<f32>(pow(i.col.rgb, vec3<f32>(2.2)), i.col.a); }
 "#;
 
@@ -406,13 +443,13 @@ impl View3D {
                 entry_point: "vs",
                 compilation_options: Default::default(),
                 buffers: &[wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<LineVertex>() as u64,
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x4],
+                    array_stride: 2 * std::mem::size_of::<LineVertex>() as u64,
+                    step_mode: wgpu::VertexStepMode::Instance,
+                    attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32, 2 => Float32x4, 3 => Float32x3, 4 => Float32, 5 => Float32x4],
                 }],
             },
             fragment: Some(wgpu::FragmentState { module: &lm, entry_point: "fs", compilation_options: Default::default(), targets: &target }),
-            primitive: wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::LineList, ..Default::default() },
+            primitive: wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::TriangleList, ..Default::default() },
             depth_stencil: depth_state,
             multisample: Default::default(),
             multiview: None,
@@ -420,7 +457,7 @@ impl View3D {
         });
         let line_uniform = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("lines vp"),
-            contents: bytemuck::bytes_of(&Mat4::IDENTITY.to_cols_array_2d()),
+            contents: bytemuck::bytes_of(&LineUniform { vp: Mat4::IDENTITY.to_cols_array_2d(), viewport: [1.0, 1.0], line_px: 1.0, _p0: 0.0 }),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
         let line_bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -744,8 +781,9 @@ impl View3D {
         }
     }
 
-    pub fn render(&self, enc: &mut wgpu::CommandEncoder, queue: &wgpu::Queue, vp: Mat4, bg: [f64; 3]) {
-        queue.write_buffer(&self.line_uniform, 0, bytemuck::bytes_of(&vp.to_cols_array_2d()));
+    pub fn render(&self, enc: &mut wgpu::CommandEncoder, queue: &wgpu::Queue, vp: Mat4, bg: [f64; 3], line_px: f32) {
+        let lu = LineUniform { vp: vp.to_cols_array_2d(), viewport: [self.size.0 as f32, self.size.1 as f32], line_px, _p0: 0.0 };
+        queue.write_buffer(&self.line_uniform, 0, bytemuck::bytes_of(&lu));
         let mut rp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("3d"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -773,7 +811,7 @@ impl View3D {
             rp.set_pipeline(&self.line_pipe);
             rp.set_bind_group(0, &self.line_bind, &[]);
             rp.set_vertex_buffer(0, self.line_buf.slice(..));
-            rp.draw(0..self.line_count, 0..1);
+            rp.draw(0..6, 0..self.line_count / 2);
         }
         rp.set_pipeline(&self.point_pipe);
         for g in self.clouds.values() {
