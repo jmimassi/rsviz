@@ -8,7 +8,7 @@
 //!
 //!   rsviz [bag ...] [--fixed-frame map] [--follow base_link|none] [--distance 30] [--pitch 0.6] [--topics /a,/b]
 //!         [--point-size 2] [--line-width 2] [--trail 20000] [--width 1600 --height 1000] [--present fifo|mailbox|immediate] [--max-fps N]
-//!         [--rate 1.0] [--start 0] [--loop] [--paused] [--bag-info] [--on-demand] [--gpu intel|nvidia] [--fullscreen] [--domain N]
+//!         [--rate 1.0] [--start 0] [--loop] [--paused] [--bag-info] [--on-demand] [--gpu integrated|intel|nvidia] [--fullscreen] [--domain N]
 //!   bag ...: the bag to play (several files = the splits of one recording). Also: Open bag, or drop it on the window.
 //!   --rate, --start, --loop, --paused: playback speed, start time (seconds into the bag), loop at the end, start paused.
 //!   --domain: ROS domain to listen on (default: ROS_DOMAIN_ID); it can also be changed from the top bar.
@@ -16,8 +16,9 @@
 //!   --on-demand: draw only when something changes (default: every refresh of the display).
 //!   --fullscreen: start in full screen on the primary monitor (F11 toggles it on the current one). A full-screen
 //!          window is not recomposed by the desktop, which lifts the frame rate where the compositor is the limit.
-//!   --gpu: the GPU to draw with, by part of its name (default: the most powerful one). On a laptop whose screens
-//!          are driven by the integrated GPU, drawing with that one avoids the copy of every frame between GPUs.
+//!   --gpu: the GPU to draw with, by part of its name, or `integrated` (default: the most powerful one). On a laptop
+//!          whose screens are driven by the integrated GPU, draw with that one: an idle discrete GPU runs at a low
+//!          clock, and the frames drawn on it then reach the screen late (40 instead of 120 fps).
 //!   --follow: the camera orbits this TF frame (default: base_link as soon as it exists; none = fixed point).
 //!   RSVIZ_MESH_PATH=dir1:dir2: where to look (by file name) for robot meshes whose path does not exist here.
 

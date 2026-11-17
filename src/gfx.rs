@@ -24,7 +24,8 @@ pub struct Gpu {
 
 impl Gpu {
     /// `present`: the present modes to use, by order of preference (vsync Fifo when none is supported).
-    /// `gpu`: part of the name of the GPU to draw with ("intel", "nvidia"); the most powerful one when None.
+    /// `gpu`: part of the name of the GPU to draw with ("intel", "nvidia"), or "integrated" for the integrated one; the
+    /// most powerful one when None.
     pub async fn new(window: Arc<winit::window::Window>, present: &[wgpu::PresentMode], gpu: Option<&str>) -> Gpu {
         // WGPU_BACKEND=vulkan|gl overrides the backend (default: Vulkan / Metal / DX12).
         let backends = wgpu::util::backend_bits_from_env().unwrap_or(wgpu::Backends::PRIMARY);
@@ -33,9 +34,13 @@ impl Gpu {
         let named = gpu.and_then(|want| {
             let all = instance.enumerate_adapters(backends);
             let names: Vec<String> = all.iter().map(|a| a.get_info().name).collect();
-            let found = all.into_iter().find(|a| a.get_info().name.to_lowercase().contains(&want.to_lowercase()) && a.is_surface_supported(&surface));
+            let found = all.into_iter().find(|a| {
+                let info = a.get_info();
+                let hit = if want.eq_ignore_ascii_case("integrated") { info.device_type == wgpu::DeviceType::IntegratedGpu } else { info.name.to_lowercase().contains(&want.to_lowercase()) };
+                hit && a.is_surface_supported(&surface)
+            });
             if found.is_none() {
-                log::warn!("no GPU named like \"{want}\" can draw this window (GPUs: {}): using the default one", names.join(", "));
+                log::warn!("no GPU like \"{want}\" can draw this window (GPUs: {}): using the default one", names.join(", "));
             }
             found
         });

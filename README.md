@@ -101,7 +101,7 @@ While a bag is open the live topics are muted; closing it brings them back.
 | `--rate 1.0`, `--start 0`, `--loop`, `--paused` | bag playback: speed, start time (s), loop, start paused |
 | `--on-demand` | draw only when something changes |
 | `--max-fps N`, `--present fifo\|mailbox\|immediate` | frame rate limit and presentation mode |
-| `--gpu intel\|nvidia` | the GPU to draw with, by part of its name (default: the most powerful one) |
+| `--gpu integrated\|intel\|nvidia` | the GPU to draw with: the integrated one, or by part of its name (default: the most powerful one). On a laptop whose screens are driven by the integrated GPU, `integrated` is smoother: an idle discrete GPU runs at a low clock and its frames reach the screen late |
 | `--width 1600 --height 1000`, `--fullscreen` | window size, or full screen (F11 toggles it) |
 
 Controls:
