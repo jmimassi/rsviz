@@ -2,9 +2,10 @@
 
 A small, efficient ROS 2 viewer written in Rust.
 
-![rsviz: a point cloud, a path, markers and two camera streams](assets/screenshot.png)
+![rsviz on a UAV flight: paths, particles, a camera image on the ground and three camera streams](assets/screenshot.png)
 
-*rsviz on a synthetic scene: a point cloud, a path, markers, TF frames and two camera streams.*
+*rsviz on a UAV flight: the GNSS path and an estimated one, a particle cloud, the camera image projected on the ground,
+and three camera streams.*
 
 rsviz shows a 3D view (point clouds, paths, odometry and pose trails, markers, robot model, TF frames, grid) and
 camera panels, next to each other as draggable tiles. It is a native ROS 2 node (rcl, through
